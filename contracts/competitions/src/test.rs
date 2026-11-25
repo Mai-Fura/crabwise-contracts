@@ -556,6 +556,41 @@ fn history_is_capped_at_the_configured_limit() {
     assert_eq!(f.client.get_history().len(), HISTORY_LIMIT);
 }
 
+// ── Issue #66: Reject competition entries after closing ──────────────────────
+
+#[test]
+fn entries_are_rejected_at_and_after_the_deadline() {
+    let f = setup();
+    f.create();
+
+    // Before the deadline: entry accepted.
+    f.submit(&f.alice);
+    assert_eq!(f.client.get_competition(&f.id).submission_count, 1);
+
+    // Advance to exactly the deadline ledger — this ledger is at the boundary
+    // where the submission window ends (sequence == submission_end_ledger).
+    f.env.ledger().with_mut(|l| l.sequence_number = f.client.get_competition(&f.id).submission_end_ledger);
+    let err = f
+        .client
+        .try_submit(&f.id, &f.bob, &String::from_str(&f.env, "ipfs://late-at"))
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, CompetitionError::SubmissionsClosed);
+
+    // After the deadline: also rejected, entrant set unchanged.
+    f.env.ledger().with_mut(|l| l.sequence_number += 1);
+    let err = f
+        .client
+        .try_submit(&f.id, &f.carol, &String::from_str(&f.env, "ipfs://late-after"))
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, CompetitionError::SubmissionsClosed);
+
+    // Entrant set has not grown.
+    assert_eq!(f.client.get_entrants(&f.id).len(), 1);
+    assert_eq!(f.client.get_competition(&f.id).submission_count, 1);
 // ── Issue #69: Validate competition winner rankings ──────────────────────────
 
 #[test]

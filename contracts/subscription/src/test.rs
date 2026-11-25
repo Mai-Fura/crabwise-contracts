@@ -435,6 +435,25 @@ fn unknown_accounts_and_tiers_are_reported() {
     );
 }
 
+// ── Issue #63: Define subscription expiration at the ledger boundary ─────────
+
+#[test]
+fn subscription_active_before_expiration_expired_after() {
+    let f = setup();
+    f.subscribed(false); // cancelled auto-renew — no grace window
+    let end = f.client.get_subscription(&f.member).period_end_ledger;
+
+    // One ledger before expiration: still active.
+    f.env.ledger().with_mut(|l| l.sequence_number = end - 1);
+    assert!(f.client.is_active(&f.member));
+
+    // Exactly at the expiration ledger: still covered (<=).
+    f.env.ledger().with_mut(|l| l.sequence_number = end);
+    assert!(f.client.is_active(&f.member));
+
+    // One ledger after: coverage is gone.
+    f.env.ledger().with_mut(|l| l.sequence_number = end + 1);
+    assert!(!f.client.is_active(&f.member));
 // ── Issue #62: Settle subscription credits exactly once ─────────────────────
 
 #[test]
