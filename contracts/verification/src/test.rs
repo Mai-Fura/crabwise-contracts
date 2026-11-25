@@ -530,6 +530,63 @@ fn invalid_work_count_is_rejected_without_creating_partial_record() {
     let portfolio = f.client.get_portfolio(&f.artist);
     assert_eq!(portfolio.work_count, MIN_WORK_COUNT);
     assert_eq!(portfolio.status, PortfolioStatus::Submitted);
+// ── Issue #73: Prevent unauthorized verification decisions ──────────────────
+
+#[test]
+fn authorized_verifier_can_make_decisions() {
+    let f = setup();
+    f.client.submit_portfolio(&f.artist, &uri(&f.env), &5);
+    f.client.start_review(&f.reviewer, &f.artist);
+    // Authorized reviewer approves — should succeed.
+    f.client.review_portfolio(&f.reviewer, &f.artist, &quality(80), &note(&f.env));
+    assert_eq!(
+        f.client.get_portfolio(&f.artist).status,
+        PortfolioStatus::Verified
+    );
+}
+
+#[test]
+fn applicant_cannot_make_verification_decisions() {
+    let f = setup();
+    f.client.submit_portfolio(&f.artist, &uri(&f.env), &5);
+    f.client.start_review(&f.reviewer, &f.artist);
+
+    // The applicant (artist) is not a reviewer — decision must be refused.
+    let err = f
+        .client
+        .try_review_portfolio(&f.artist, &f.artist, &quality(80), &note(&f.env))
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, VerificationError::Unauthorized);
+
+    // Portfolio status must be unchanged.
+    assert_eq!(
+        f.client.get_portfolio(&f.artist).status,
+        PortfolioStatus::UnderReview
+    );
+}
+
+#[test]
+fn unrelated_address_cannot_make_verification_decisions() {
+    let f = setup();
+    f.client.submit_portfolio(&f.artist, &uri(&f.env), &5);
+    f.client.start_review(&f.reviewer, &f.artist);
+
+    let unrelated = Address::generate(&f.env);
+    let err = f
+        .client
+        .try_review_portfolio(&unrelated, &f.artist, &quality(80), &note(&f.env))
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, VerificationError::Unauthorized);
+
+    // Portfolio status must be unchanged.
+    assert_eq!(
+        f.client.get_portfolio(&f.artist).status,
+        PortfolioStatus::UnderReview
+    );
 }
 
 #[test]

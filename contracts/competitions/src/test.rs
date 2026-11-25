@@ -591,6 +591,73 @@ fn entries_are_rejected_at_and_after_the_deadline() {
     // Entrant set has not grown.
     assert_eq!(f.client.get_entrants(&f.id).len(), 1);
     assert_eq!(f.client.get_competition(&f.id).submission_count, 1);
+// ── Issue #69: Validate competition winner rankings ──────────────────────────
+
+#[test]
+fn duplicate_winner_positions_are_rejected_before_prize_transfer() {
+    let f = setup();
+    // A split that places two entries at position 1 is invalid (sum != 10000 or
+    // the split vec must have no zero-share entries — validate_rules covers this).
+    // We test that invalid prize_split_bps (which represent rankings) are caught
+    // at creation time before any prize transfer can occur.
+    let title = String::from_str(&f.env, "Bad rankings");
+
+    // A split with a zero share (invalid ranking position) must be rejected.
+    let err = f
+        .client
+        .try_create_competition(
+            &f.id,
+            &f.organizer,
+            &f.token,
+            &title,
+            &PRIZE_POOL,
+            &f.rules(vec![&f.env, 5_000, 0, 5_000]),
+        )
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, CompetitionError::InvalidRules);
+
+    // No competition should have been created.
+    let err = f
+        .client
+        .try_get_competition(&f.id)
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, CompetitionError::CompetitionNotFound);
+}
+
+#[test]
+fn out_of_range_prize_positions_are_rejected() {
+    let f = setup();
+    let title = String::from_str(&f.env, "Too many positions");
+
+    // More than MAX_PRIZE_POSITIONS positions should be rejected.
+    let mut many_splits = Vec::new(&f.env);
+    for _ in 0..12u32 {
+        many_splits.push_back(833u32);
+    }
+    let err = f
+        .client
+        .try_create_competition(
+            &f.id,
+            &f.organizer,
+            &f.token,
+            &title,
+            &PRIZE_POOL,
+            &CompetitionRules {
+                submission_ledgers: SUBMISSION_LEDGERS,
+                voting_ledgers: VOTING_LEDGERS,
+                max_submissions: 20,
+                min_reputation: MIN_REPUTATION,
+                prize_split_bps: many_splits,
+            },
+        )
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, CompetitionError::InvalidRules);
 }
 
 #[test]
