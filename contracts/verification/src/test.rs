@@ -498,6 +498,40 @@ fn revoking_a_nonexistent_badge_is_reported() {
     assert_eq!(err, VerificationError::BadgeNotFound);
 }
 
+// ── Issue #72: Enforce verification evidence limits ──────────────────────────
+
+#[test]
+fn invalid_work_count_is_rejected_without_creating_partial_record() {
+    let f = setup();
+
+    // A submission below the minimum work count must be rejected.
+    let below_min = MIN_WORK_COUNT - 1;
+    let err = f
+        .client
+        .try_submit_portfolio(&f.artist, &uri(&f.env), &below_min)
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, VerificationError::InvalidWorkCount);
+
+    // No partial portfolio record should have been created.
+    let err = f
+        .client
+        .try_get_portfolio(&f.artist)
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, VerificationError::PortfolioNotFound);
+
+    // Exactly at the minimum work count must succeed.
+    f.client
+        .submit_portfolio(&f.artist, &uri(&f.env), &MIN_WORK_COUNT)
+        .unwrap();
+    let portfolio = f.client.get_portfolio(&f.artist);
+    assert_eq!(portfolio.work_count, MIN_WORK_COUNT);
+    assert_eq!(portfolio.status, PortfolioStatus::Submitted);
+}
+
 #[test]
 fn admin_can_tighten_the_minimum_score() {
     let f = setup();
