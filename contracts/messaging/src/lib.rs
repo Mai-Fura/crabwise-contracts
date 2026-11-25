@@ -825,6 +825,10 @@ mod test {
         assert!(result.is_err());
     }
 
+    // ── Issue #59: Return explicit errors for missing conversations ───────────
+
+    #[test]
+    fn test_missing_conversation_returns_explicit_error() {
     // ── Issue #56: Enforce a maximum message payload ───────────────────────
 
     #[test]
@@ -836,6 +840,33 @@ mod test {
 
         let admin = Address::generate(&env);
         let alice = Address::generate(&env);
+
+        client.initialize(&admin);
+
+        let missing_id = soroban_sdk::Bytes::from_slice(&env, b"conv-does-not-exist");
+
+        // get_conversation on a missing ID returns ConversationNotFound, not an empty message list.
+        let err = client
+            .try_get_conversation(&missing_id)
+            .err()
+            .unwrap()
+            .unwrap();
+        assert_eq!(err, MessagingError::ConversationNotFound);
+
+        // get_messages on a missing conversation also returns ConversationNotFound.
+        let err = client
+            .try_get_messages(&missing_id, &alice, &1, &10)
+            .err()
+            .unwrap()
+            .unwrap();
+        assert_eq!(err, MessagingError::ConversationNotFound);
+
+        // A real conversation with no messages returns an empty list, not an error.
+        let bob = Address::generate(&env);
+        let real_id = soroban_sdk::Bytes::from_slice(&env, b"conv-real");
+        client.create_conversation(&real_id, &alice, &bob);
+        let msgs = client.get_messages(&real_id, &alice, &1, &10);
+        assert_eq!(msgs.len(), 0);
         let bob = Address::generate(&env);
 
         client.initialize(&admin);

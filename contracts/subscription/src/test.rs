@@ -435,6 +435,39 @@ fn unknown_accounts_and_tiers_are_reported() {
     );
 }
 
+// ── Issue #62: Settle subscription credits exactly once ─────────────────────
+
+#[test]
+fn duplicate_credit_deposit_does_not_pay_twice() {
+    let f = setup();
+    f.create_tiers();
+
+    // Deposit exactly one period's worth of credit.
+    f.client.deposit(&f.member, &BASIC_PRICE);
+
+    // Subscribe with the available credit.
+    f.client.subscribe(&f.member, &BASIC, &true);
+
+    // Credit should now be zero.
+    assert_eq!(f.client.get_credit(&f.member), 0);
+
+    // Attempting to subscribe again (a duplicate claim) must be rejected —
+    // balance and event stream must not change a second time.
+    let err = f
+        .client
+        .try_subscribe(&f.member, &BASIC, &true)
+        .err()
+        .unwrap()
+        .unwrap();
+    assert_eq!(err, SubscriptionError::AlreadySubscribed);
+
+    // Balance is unchanged after the rejected duplicate.
+    assert_eq!(f.client.get_credit(&f.member), 0);
+
+    // Payment history records exactly one entry.
+    let payments = f.client.get_payments(&f.member);
+    assert_eq!(payments.len(), 1);
+    assert_eq!(payments.get(0).unwrap().kind, PaymentKind::Initial);
 // ── Issue #61: Reject subscription plans with invalid prices ────────────────
 
 #[test]
